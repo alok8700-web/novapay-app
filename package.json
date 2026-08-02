@@ -1,0 +1,1 @@
+{"scripts":{"install:all":"npm --prefix backend install && npm --prefix frontend install","dev":"concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"","build":"npm --prefix frontend run build","test":"npm --prefix backend test && npm --prefix frontend test -- --run"},"devDependencies":{"concurrently":"^9.0.1"}}
