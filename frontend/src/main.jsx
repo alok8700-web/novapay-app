@@ -26,5 +26,10 @@ function App() { const [user, setUser] = useState(null); const [data, setData] =
   {view === 'transactions' && <Transactions rows={rows} full />}{!['dashboard','wallets','transfer','transactions'].includes(view) && <section className="panel"><h2>{view}</h2><p>Production-ready placeholder for the {view} module.</p></section>}</main></div> }
 function Transactions({ rows, full }) { return <article className="panel"><h2>Transactions</h2><table><tbody>{rows.map(t=><tr key={t.id}><td>{new Date(t.date).toLocaleDateString()}</td><td>{t.description}</td>{full && <td>{t.type}</td>}<td className={t.amount>0?'pos':'neg'}>{money(t.amount)}</td><td><span className="pill">{t.status}</span></td></tr>)}</tbody></table></article>; }
 function Actions({ setView }) { return <section className="actions"><button onClick={()=>setView('transfer')}><Send/>Send Money</button><button><Wallet/>Add Money</button><button><CreditCard/>Pay Bills</button><button><Bell/>Mobile Recharge</button></section>; }
-createRoot(document.getElementById('root')).render(<App />);
+const rootElement = document.getElementById('root');
+
+if (rootElement) {
+  createRoot(rootElement).render(<App />);
+}
+
 export { Auth };
