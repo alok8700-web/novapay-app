@@ -21,3 +21,8 @@ npm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# binaries
+minikube-linux-amd64
+helm-linux-amd64.tar.gz
+linux-amd64/

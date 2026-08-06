@@ -1,0 +1,39 @@
+replicaCount: 2
+
+image:
+  repository: alokdocker8700/novapay
+  tag: v1
+  pullPolicy: Always
+
+service:
+  type: NodePort
+  port: 4000
+  nodePort: 30080
+
+config:
+  NODE_ENV: production
+  PORT: "4000"
+
+secret:
+  JWT_SECRET: NovaPaySuperSecret123!
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 50
+
+ingress:
+  enabled: true
+  className: nginx
+
+  host: novapay.local
