@@ -2,15 +2,21 @@ apiVersion: v1
 kind: Service
 
 metadata:
-  name: {{ .Chart.Name }}-service
+  name: novapay-service
+
+  labels:
+    app: novapay
+    app.kubernetes.io/name: novapay
+    app.kubernetes.io/instance: {{ .Release.Name }}
 
 spec:
   type: {{ .Values.service.type }}
 
   selector:
-    app: {{ .Chart.Name }}
+    app: novapay
 
   ports:
-    - port: {{ .Values.service.port }}
-      targetPort: {{ .Values.service.port }}
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: 4000
       nodePort: {{ .Values.service.nodePort }}

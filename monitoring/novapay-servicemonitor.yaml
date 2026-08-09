@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+
+metadata:
+  name: novapay
+  labels:
+    release: monitoring
+
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: novapay
+
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

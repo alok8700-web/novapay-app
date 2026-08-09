@@ -7,6 +7,14 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { beneficiaries, chart, transactions, users, wallets } from './data.js';
+import {
+  register,
+  httpRequestsTotal,
+  httpRequestDuration,
+  loginSuccessTotal,
+  loginFailedTotal,
+  transferTotal,
+} from './metrics.js';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me';
 
@@ -32,6 +40,27 @@ app.use(
 
 app.use(express.json());
 app.use(morgan('tiny'));
+app.use((req, res, next) => {
+  const end = httpRequestDuration.startTimer();
+
+  res.on('finish', () => {
+    const route = req.route?.path || req.path;
+
+    httpRequestsTotal.inc({
+      method: req.method,
+      route,
+      status: res.statusCode,
+    });
+
+    end({
+      method: req.method,
+      route,
+      status: res.statusCode,
+    });
+  });
+
+  next();
+});
 
 const sign = (user) =>
   jwt.sign(
@@ -72,6 +101,11 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+app.get('/metrics', async (_req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
+});
+
 app.post('/api/auth/login', async (req, res) => {
   const body = z
     .object({
@@ -91,10 +125,14 @@ app.post('/api/auth/login', async (req, res) => {
   );
 
   if (!user || !(await bcrypt.compare(body.data.password, user.passwordHash))) {
-    return res.status(401).json({
-      message: 'Invalid credentials',
-    });
-  }
+  loginFailedTotal.inc();
+
+  return res.status(401).json({
+    message: 'Invalid credentials',
+  });
+}
+
+loginSuccessTotal.inc();
 
   res.json({
     token: sign(user),
@@ -214,7 +252,7 @@ app.post('/api/transfers', auth, (req, res) => {
 
   transactions.unshift(txn);
 
-  res.status(201).json({
+  transferTotal.inc();res.status(201).json({
     transaction: txn,
     wallet,
   });
