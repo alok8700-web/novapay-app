@@ -1,0 +1,28 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: novapay-alertmanager-config
+  namespace: default
+  labels:
+    release: monitoring
+spec:
+  route:
+    receiver: novapay-email
+    groupBy:
+      - alertname
+      - namespace
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 12h
+
+  receivers:
+    - name: novapay-email
+      emailConfigs:
+        - to: alokrana444@gmail.com
+          from: alokrana444@gmail.com
+          smarthost: smtp.gmail.com:587
+          authUsername: alokrana444@gmail.com
+          authPassword:
+            name: alertmanager-gmail
+            key: smtp-password
+          requireTLS: true

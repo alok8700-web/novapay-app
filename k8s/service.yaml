@@ -5,7 +5,7 @@ metadata:
   name: novapay-service
 
 spec:
-  type: NodePort
+  type: ClusterIP
 
   selector:
     app: novapay
@@ -13,4 +13,4 @@ spec:
   ports:
     - port: 4000
       targetPort: 4000
-      nodePort: 30080
+      protocol: TCP

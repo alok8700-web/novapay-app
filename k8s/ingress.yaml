@@ -3,21 +3,35 @@ kind: Ingress
 
 metadata:
   name: novapay-ingress
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:274193347237:certificate/e23ad132-4bb6-4292-83dc-7ce080ca4b94
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
 
 spec:
-  ingressClassName: nginx
+  ingressClassName: alb
 
   rules:
-    - host: novapay.local
-
+    - host: devops-skill.xyz
       http:
         paths:
           - path: /
             pathType: Prefix
-
             backend:
               service:
                 name: novapay-service
+                port:
+                  number: 4000
 
+    - host: www.devops-skill.xyz
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: novapay-service
                 port:
                   number: 4000
