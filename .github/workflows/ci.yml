@@ -23,13 +23,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
+      # ============================================================
+      # CHECKOUT
+      # ============================================================
+
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      # ============================================================
+      # NODE.JS
+      # ============================================================
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install Root Dependencies
         run: npm install
@@ -37,11 +47,19 @@ jobs:
       - name: Install Project Dependencies
         run: npm run install:all
 
+      # ============================================================
+      # TEST & BUILD
+      # ============================================================
+
       - name: Run Tests
         run: npm test
 
       - name: Build Frontend
         run: npm run build
+
+      # ============================================================
+      # DOCKER
+      # ============================================================
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -65,9 +83,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # -----------------------------
-      # AWS / EKS DEPLOYMENT
-      # -----------------------------
+      # ============================================================
+      # AWS / EKS AUTHENTICATION
+      # ============================================================
 
       - name: Configure AWS Credentials
         if: github.event_name == 'push'
@@ -78,7 +96,12 @@ jobs:
 
       - name: Verify AWS Identity
         if: github.event_name == 'push'
-        run: aws sts get-caller-identity
+        run: |
+          aws sts get-caller-identity
+
+      # ============================================================
+      # EKS CONFIGURATION
+      # ============================================================
 
       - name: Update kubeconfig
         if: github.event_name == 'push'
@@ -92,24 +115,196 @@ jobs:
         run: |
           kubectl get nodes
 
+      # ============================================================
+      # DEPLOY
+      # ============================================================
+
       - name: Deploy NovaPay to EKS
         if: github.event_name == 'push'
         run: |
+          set -e
+
+          IMAGE="${IMAGE_NAME}:${GITHUB_SHA}"
+
+          echo "========================================"
+          echo "Deploying NovaPay"
+          echo "Image: $IMAGE"
+          echo "========================================"
+
           kubectl set image deployment/novapay \
-            novapay=${IMAGE_NAME}:${GITHUB_SHA}
+            novapay="$IMAGE"
+
+          kubectl annotate deployment/novapay \
+            kubernetes.io/change-cause="Deploy ${GITHUB_SHA}" \
+            --overwrite
+
+      # ============================================================
+      # ROLLOUT
+      # ============================================================
 
       - name: Wait for Deployment Rollout
         if: github.event_name == 'push'
         run: |
-          kubectl rollout status deployment/novapay --timeout=5m
+          set -e
+
+          echo "Waiting for NovaPay rollout..."
+
+          if ! kubectl rollout status deployment/novapay --timeout=5m; then
+
+            echo "========================================"
+            echo "ROLLOUT FAILED"
+            echo "========================================"
+
+            echo "Deployment:"
+            kubectl get deployment novapay
+
+            echo
+            echo "Pods:"
+            kubectl get pods -l app=novapay -o wide
+
+            echo
+            echo "Rolling back NovaPay..."
+
+            kubectl rollout undo deployment/novapay
+
+            kubectl rollout status deployment/novapay --timeout=5m || true
+
+            exit 1
+          fi
+
+          echo "========================================"
+          echo "ROLLOUT SUCCESSFUL"
+          echo "========================================"
+
+      # ============================================================
+      # VERIFY DEPLOYMENT
+      # ============================================================
 
       - name: Verify Deployment
         if: github.event_name == 'push'
         run: |
+          set -e
+
+          echo "========================================"
+          echo "DEPLOYMENT"
+          echo "========================================"
+
           kubectl get deployment novapay
-          kubectl get pods -l app=novapay -o wide
+
+          echo
+          echo "========================================"
+          echo "PODS"
+          echo "========================================"
+
+          kubectl get pods \
+            -l app=novapay \
+            -o wide
+
+          echo
+          echo "========================================"
+          echo "CURRENT IMAGE"
+          echo "========================================"
+
+          kubectl get deployment novapay \
+            -o jsonpath='{.spec.template.spec.containers[0].image}'
+
+          echo
+
+      # ============================================================
+      # APPLICATION HEALTH CHECK
+      # ============================================================
 
       - name: Verify Application Health
         if: github.event_name == 'push'
         run: |
-          kubectl get pods -l app=novapay
+          set -e
+
+          echo "========================================"
+          echo "NOVAPAY HEALTH CHECK"
+          echo "========================================"
+
+          for i in {1..12}; do
+
+            echo
+            echo "Health check attempt $i/12..."
+
+            kubectl delete pod novapay-health-check \
+              --ignore-not-found=true \
+              --wait=true
+
+            if kubectl run novapay-health-check \
+              --restart=Never \
+              --image=curlimages/curl:8.10.1 \
+              --command -- \
+              curl -fsS \
+              --max-time 5 \
+              http://novapay-service:4000/api/health; then
+
+              echo
+              echo "========================================"
+              echo "APPLICATION HEALTH CHECK PASSED"
+              echo "========================================"
+
+              kubectl delete pod novapay-health-check \
+                --ignore-not-found=true \
+                --wait=true
+
+              exit 0
+            fi
+
+            echo "Health check failed."
+
+            kubectl delete pod novapay-health-check \
+              --ignore-not-found=true \
+              --wait=true
+
+            if [ "$i" -lt 12 ]; then
+              echo "Retrying in 10 seconds..."
+              sleep 10
+            fi
+
+          done
+
+          # ========================================================
+          # HEALTH CHECK FAILED
+          # ========================================================
+
+          echo
+          echo "========================================"
+          echo "APPLICATION HEALTH CHECK FAILED"
+          echo "========================================"
+
+          echo
+          echo "Deployment:"
+          kubectl get deployment novapay
+
+          echo
+          echo "Pods:"
+          kubectl get pods -l app=novapay -o wide
+
+          echo
+          echo "Pod Events:"
+          kubectl get events \
+            --sort-by='.lastTimestamp' \
+            | tail -30
+
+          echo
+          echo "Rolling back NovaPay deployment..."
+
+          kubectl rollout undo deployment/novapay
+
+          echo
+          echo "Waiting for rollback..."
+
+          kubectl rollout status deployment/novapay \
+            --timeout=5m || true
+
+          echo
+          echo "Deployment after rollback:"
+          kubectl get deployment novapay
+
+          echo
+          echo "Pods after rollback:"
+          kubectl get pods -l app=novapay -o wide
+
+          exit 1
