@@ -3,7 +3,6 @@ kind: Service
 
 metadata:
   name: novapay-service
-
   labels:
     app: novapay
     app.kubernetes.io/name: novapay
@@ -19,4 +18,3 @@ spec:
     - name: http
       port: {{ .Values.service.port }}
       targetPort: 4000
-      nodePort: {{ .Values.service.nodePort }}
