@@ -10,12 +10,9 @@ on:
       - main
 
 permissions:
-  id-token: write
-  contents: read
+  contents: write
 
 env:
-  AWS_REGION: us-east-1
-  EKS_CLUSTER_NAME: novapay-eks
   IMAGE_NAME: alokdocker8700/novapay
 
 jobs:
@@ -23,17 +20,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      # ============================================================
-      # CHECKOUT
-      # ============================================================
-
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      # ============================================================
-      # NODE.JS
-      # ============================================================
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -47,19 +37,11 @@ jobs:
       - name: Install Project Dependencies
         run: npm run install:all
 
-      # ============================================================
-      # TEST & BUILD
-      # ============================================================
-
       - name: Run Tests
         run: npm test
 
       - name: Build Frontend
         run: npm run build
-
-      # ============================================================
-      # DOCKER
-      # ============================================================
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -83,228 +65,59 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # ============================================================
-      # AWS / EKS AUTHENTICATION
-      # ============================================================
-
-      - name: Configure AWS Credentials
+      - name: Setup Helm
         if: github.event_name == 'push'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::274193347237:role/GitHubActions-NovaPay-EKS
-          aws-region: ${{ env.AWS_REGION }}
+        uses: azure/setup-helm@v4
 
-      - name: Verify AWS Identity
-        if: github.event_name == 'push'
+      - name: Lint Helm Chart
+        run: helm lint helm/novapay
+
+      - name: Render Helm Chart
+        run: helm template novapay helm/novapay > /tmp/novapay-rendered.yaml
+
+      - name: Validate Rendered Helm Manifests
         run: |
-          aws sts get-caller-identity
+          grep -q 'kind: Deployment' /tmp/novapay-rendered.yaml
+          grep -q 'kind: Service' /tmp/novapay-rendered.yaml
+          grep -q 'kind: Ingress' /tmp/novapay-rendered.yaml
+          grep -q 'image: "alokdocker8700/novapay:' /tmp/novapay-rendered.yaml
+          grep -q 'ingressClassName: alb' /tmp/novapay-rendered.yaml
+          grep -q 'devops-skill.xyz' /tmp/novapay-rendered.yaml
 
-      # ============================================================
-      # EKS CONFIGURATION
-      # ============================================================
-
-      - name: Update kubeconfig
-        if: github.event_name == 'push'
-        run: |
-          aws eks update-kubeconfig \
-            --region "$AWS_REGION" \
-            --name "$EKS_CLUSTER_NAME"
-
-      - name: Verify EKS Access
-        if: github.event_name == 'push'
-        run: |
-          kubectl get nodes
-
-      # ============================================================
-      # DEPLOY
-      # ============================================================
-
-      - name: Deploy NovaPay to EKS
+      # GitOps boundary:
+      # CI builds/tests/publishes the immutable image, then updates the
+      # desired image tag in Git. Argo CD is responsible for applying that
+      # desired state to EKS.
+      - name: Update GitOps Image Tag
         if: github.event_name == 'push'
         run: |
           set -e
 
-          IMAGE="${IMAGE_NAME}:${GITHUB_SHA}"
+          IMAGE_TAG="${GITHUB_SHA}"
+          VALUES_FILE="helm/novapay/values.yaml"
 
-          echo "========================================"
-          echo "Deploying NovaPay"
-          echo "Image: $IMAGE"
-          echo "========================================"
+          echo "Updating GitOps desired image to: ${IMAGE_NAME}:${IMAGE_TAG}"
 
-          kubectl set image deployment/novapay \
-            novapay="$IMAGE"
+          sed -i -E "s|^  tag: .*|  tag: ${IMAGE_TAG}|" "$VALUES_FILE"
 
-          kubectl annotate deployment/novapay \
-            kubernetes.io/change-cause="Deploy ${GITHUB_SHA}" \
-            --overwrite
+          echo "Updated Helm values:"
+          grep -A3 '^image:' "$VALUES_FILE"
 
-      # ============================================================
-      # ROLLOUT
-      # ============================================================
-
-      - name: Wait for Deployment Rollout
+      - name: Commit GitOps Desired State
         if: github.event_name == 'push'
         run: |
           set -e
 
-          echo "Waiting for NovaPay rollout..."
-
-          if ! kubectl rollout status deployment/novapay --timeout=5m; then
-
-            echo "========================================"
-            echo "ROLLOUT FAILED"
-            echo "========================================"
-
-            echo "Deployment:"
-            kubectl get deployment novapay
-
-            echo
-            echo "Pods:"
-            kubectl get pods -l app=novapay -o wide
-
-            echo
-            echo "Rolling back NovaPay..."
-
-            kubectl rollout undo deployment/novapay
-
-            kubectl rollout status deployment/novapay --timeout=5m || true
-
-            exit 1
+          if git diff --quiet -- helm/novapay/values.yaml; then
+            echo "No GitOps change detected."
+            exit 0
           fi
 
-          echo "========================================"
-          echo "ROLLOUT SUCCESSFUL"
-          echo "========================================"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      # ============================================================
-      # VERIFY DEPLOYMENT
-      # ============================================================
+          git add helm/novapay/values.yaml
+          git commit -m "chore(gitops): deploy ${GITHUB_SHA} [skip ci]"
+          git push origin main
 
-      - name: Verify Deployment
-        if: github.event_name == 'push'
-        run: |
-          set -e
-
-          echo "========================================"
-          echo "DEPLOYMENT"
-          echo "========================================"
-
-          kubectl get deployment novapay
-
-          echo
-          echo "========================================"
-          echo "PODS"
-          echo "========================================"
-
-          kubectl get pods \
-            -l app=novapay \
-            -o wide
-
-          echo
-          echo "========================================"
-          echo "CURRENT IMAGE"
-          echo "========================================"
-
-          kubectl get deployment novapay \
-            -o jsonpath='{.spec.template.spec.containers[0].image}'
-
-          echo
-
-      # ============================================================
-      # APPLICATION HEALTH CHECK
-      # ============================================================
-
-      - name: Verify Application Health
-        if: github.event_name == 'push'
-        run: |
-          set -e
-
-          echo "========================================"
-          echo "NOVAPAY HEALTH CHECK"
-          echo "========================================"
-
-          for i in {1..12}; do
-
-            echo
-            echo "Health check attempt $i/12..."
-
-            kubectl delete pod novapay-health-check \
-              --ignore-not-found=true \
-              --wait=true
-
-            if kubectl run novapay-health-check \
-              --restart=Never \
-              --image=curlimages/curl:8.10.1 \
-              --command -- \
-              curl -fsS \
-              --max-time 5 \
-              http://novapay-service:4000/api/health; then
-
-              echo
-              echo "========================================"
-              echo "APPLICATION HEALTH CHECK PASSED"
-              echo "========================================"
-
-              kubectl delete pod novapay-health-check \
-                --ignore-not-found=true \
-                --wait=true
-
-              exit 0
-            fi
-
-            echo "Health check failed."
-
-            kubectl delete pod novapay-health-check \
-              --ignore-not-found=true \
-              --wait=true
-
-            if [ "$i" -lt 12 ]; then
-              echo "Retrying in 10 seconds..."
-              sleep 10
-            fi
-
-          done
-
-          # ========================================================
-          # HEALTH CHECK FAILED
-          # ========================================================
-
-          echo
-          echo "========================================"
-          echo "APPLICATION HEALTH CHECK FAILED"
-          echo "========================================"
-
-          echo
-          echo "Deployment:"
-          kubectl get deployment novapay
-
-          echo
-          echo "Pods:"
-          kubectl get pods -l app=novapay -o wide
-
-          echo
-          echo "Pod Events:"
-          kubectl get events \
-            --sort-by='.lastTimestamp' \
-            | tail -30
-
-          echo
-          echo "Rolling back NovaPay deployment..."
-
-          kubectl rollout undo deployment/novapay
-
-          echo
-          echo "Waiting for rollback..."
-
-          kubectl rollout status deployment/novapay \
-            --timeout=5m || true
-
-          echo
-          echo "Deployment after rollback:"
-          kubectl get deployment novapay
-
-          echo
-          echo "Pods after rollback:"
-          kubectl get pods -l app=novapay -o wide
-
-          exit 1
+          echo "GitOps desired state committed and pushed."
