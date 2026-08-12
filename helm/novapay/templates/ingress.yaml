@@ -1,27 +1,39 @@
-{{- if .Values.ingress.enabled }}
-
+{{- if .Values.gateway.host }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 
 metadata:
   name: {{ .Chart.Name }}-ingress
+  annotations:
+    alb.ingress.kubernetes.io/scheme: {{ .Values.gateway.scheme | quote }}
+    alb.ingress.kubernetes.io/target-type: {{ .Values.gateway.targetType | quote }}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.gateway.certificateArn | quote }}
 
 spec:
-  ingressClassName: {{ .Values.ingress.className }}
+  ingressClassName: {{ .Values.gateway.ingressClassName }}
 
   rules:
-    - host: {{ .Values.ingress.host }}
-
+    - host: {{ .Values.gateway.host }}
       http:
         paths:
           - path: /
             pathType: Prefix
-
             backend:
               service:
                 name: {{ .Chart.Name }}-service
-
                 port:
                   number: {{ .Values.service.port }}
 
+    - host: {{ .Values.gateway.wwwHost }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Chart.Name }}-service
+                port:
+                  number: {{ .Values.service.port }}
 {{- end }}
