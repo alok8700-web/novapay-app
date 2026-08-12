@@ -98,6 +98,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     service: 'novapay-api',
+    version: 'gitops-v2',
   });
 });
 
