@@ -17,12 +17,21 @@ spec:
         app: {{ .Chart.Name }}
 
     spec:
+      securityContext:
+        runAsNonRoot: true
+
       containers:
         - name: {{ .Chart.Name }}
 
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
 
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
 
           ports:
             - name: http
