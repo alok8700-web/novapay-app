@@ -17,6 +17,8 @@ spec:
         app: {{ .Chart.Name }}
 
     spec:
+      serviceAccountName: {{ .Chart.Name }}
+
       securityContext:
         runAsNonRoot: true
 
