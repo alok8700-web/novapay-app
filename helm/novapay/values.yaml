@@ -5,15 +5,21 @@ image:
   tag: c5c697892bf572ba99a0e2b590dab8a408ab4a13
   pullPolicy: Always
 
+container:
+  port: 4000
+
 service:
   type: ClusterIP
   port: 4000
+  targetPort: 4000
 
 gateway:
   ingressClassName: alb
   scheme: internet-facing
   targetType: ip
+
   certificateArn: arn:aws:acm:us-east-1:274193347237:certificate/e23ad132-4bb6-4292-83dc-7ce080ca4b94
+
   host: devops-skill.xyz
   wwwHost: www.devops-skill.xyz
 
@@ -28,6 +34,7 @@ resources:
   requests:
     cpu: 100m
     memory: 128Mi
+
   limits:
     cpu: 500m
     memory: 256Mi

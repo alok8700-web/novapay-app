@@ -19,31 +19,36 @@ spec:
     spec:
       containers:
         - name: {{ .Chart.Name }}
+
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+
           imagePullPolicy: {{ .Values.image.pullPolicy }}
 
           ports:
-            - containerPort: 4000
+            - name: http
+              containerPort: {{ .Values.container.port }}
+              protocol: TCP
 
           envFrom:
             - configMapRef:
                 name: {{ .Chart.Name }}-config
+
             - secretRef:
                 name: {{ .Values.secret.existingSecret }}
 
           resources:
-{{ toYaml .Values.resources | indent 12 }}
+            {{- toYaml .Values.resources | nindent 12 }}
 
           livenessProbe:
             httpGet:
               path: /api/health
-              port: 4000
+              port: {{ .Values.container.port }}
             initialDelaySeconds: 15
             periodSeconds: 20
 
           readinessProbe:
             httpGet:
               path: /api/health
-              port: 4000
+              port: {{ .Values.container.port }}
             initialDelaySeconds: 5
             periodSeconds: 10

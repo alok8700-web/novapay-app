@@ -1,3 +1,5 @@
+{{- if .Values.hpa.enabled }}
+
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 
@@ -20,3 +22,5 @@ spec:
         target:
           type: Utilization
           averageUtilization: {{ .Values.hpa.targetCPUUtilizationPercentage }}
+
+{{- end }}
