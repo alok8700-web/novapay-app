@@ -103,6 +103,17 @@ jobs:
           grep -q 'ingressClassName: alb' /tmp/novapay-rendered.yaml
           grep -q 'devops-skill.xyz' /tmp/novapay-rendered.yaml
 
+      - name: Scan Kubernetes Manifests with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: /tmp/novapay-rendered.yaml
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          scanners: misconfig
+
       # GitOps boundary:
       # CI builds/tests/scans/publishes the immutable image, then updates the
       # desired image tag in Git. Argo CD is responsible for applying that
