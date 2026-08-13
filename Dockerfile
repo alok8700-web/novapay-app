@@ -17,6 +17,7 @@ RUN addgroup -S nodeapp && \
     chown -R nodeapp:nodeapp /app/backend
 
 ENV NODE_ENV=production PORT=4000
+RUN rm -rf /usr/local/lib/node_modules/npm
 
 EXPOSE 4000
 
