@@ -42,8 +42,12 @@ spec:
             - configMapRef:
                 name: {{ .Chart.Name }}-config
 
-            - secretRef:
-                name: {{ .Values.secret.existingSecret }}
+          env:
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secret.existingSecret }}
+                  key: JWT_SECRET
 
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
