@@ -46,6 +46,30 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Build once and keep the image local until the security gate passes.
+      # This preserves the immutable Git SHA tag used by the GitOps flow.
+      - name: Build Docker Image for Security Scan
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan Docker Image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          scanners: vuln
+
       - name: Login to Docker Hub
         if: github.event_name == 'push'
         uses: docker/login-action@v3
@@ -53,20 +77,15 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and Push Docker Image
+      # Push only after Trivy passes. No image is published when the scan fails.
+      - name: Push Docker Image
         if: github.event_name == 'push'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: |
+          set -e
+          docker push "${IMAGE_NAME}:${GITHUB_SHA}"
+          docker push "${IMAGE_NAME}:latest"
 
       - name: Setup Helm
-        if: github.event_name == 'push'
         uses: azure/setup-helm@v4
 
       - name: Lint Helm Chart
@@ -85,7 +104,7 @@ jobs:
           grep -q 'devops-skill.xyz' /tmp/novapay-rendered.yaml
 
       # GitOps boundary:
-      # CI builds/tests/publishes the immutable image, then updates the
+      # CI builds/tests/scans/publishes the immutable image, then updates the
       # desired image tag in Git. Argo CD is responsible for applying that
       # desired state to EKS.
       - name: Update GitOps Image Tag
