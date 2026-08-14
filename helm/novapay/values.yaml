@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: alokdocker8700/novapay
-  tag: e2b5f5536f2a131a0c1640416ac9036c34169264
+  tag: bf77693aca4e9cb3eb3f07991647643f881526b4
   pullPolicy: Always
 
 container:
